@@ -1,0 +1,244 @@
+====================================================================
+CONFIGURABLE VARIABLES INVESTIGATION
+====================================================================
+Date: Thu Jan  1 23:26:53 UTC 2026
+Investigation of runner internal files for configurable variables
+====================================================================
+
+## COPILOT AGENT CONFIGURABLE VARIABLES
+====================================================================
+
+Based on investigation of /home/runner/work/_temp/copilot-developer-action-main/ebpf/launch.sh
+and environment variable patterns, the following Copilot variables can be configured:
+
+### Firewall Configuration:
+- COPILOT_AGENT_FIREWALL_ENABLED (boolean)
+  * Controls whether the firewall is enabled
+  * Values: true/false
+  
+- COPILOT_AGENT_FIREWALL_ALLOW_LIST (string)
+  * Defines the firewall allow list
+  * Can be unset to disable
+  
+- COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS (string)
+  * Additional entries to add to the firewall allow list
+  * Can be unset to use defaults
+  
+- COPILOT_AGENT_FIREWALL_LOG_FILE (string, read-only)
+  * Path to firewall log file
+  * Set internally: ${fw_log}
+  
+- COPILOT_AGENT_FIREWALL_ENABLE_RULESET_ALLOW_LIST (boolean)
+  * Current value: true
+  * Enables ruleset-based allow list
+  
+- COPILOT_AGENT_FIREWALL_RULESET_ALLOW_LIST (compressed string)
+  * Contains the compressed ruleset data
+  * Current value: H4sIAAAAAAAA/7ybS48bN... (base64/gzip encoded)
+
+### Timeout and Session:
+- COPILOT_AGENT_TIMEOUT_MIN (integer)
+  * Current value: 59
+  * Controls agent timeout in minutes
+  * Valid range: likely 1-120 minutes
+  
+- COPILOT_USE_ASYNC_SESSIONS (boolean)
+  * Current value: false
+  * Valid values: true, false
+  
+- COPILOT_USE_SESSIONS (boolean)
+  * Current value: true
+  * Valid values: true, false
+
+### Content Filtering:
+- COPILOT_AGENT_CONTENT_FILTER_MODE (string)
+  * Current value: markdown
+  * Known values: hidden_characters, markdown
+  * Controls how content is filtered/displayed
+
+### Evaluation and Debugging:
+- COPILOT_AGENT_ONLINE_EVALUATION_DISABLED (boolean)
+  * Current value: false
+  * Valid values: true, false
+  * Disables online evaluation when true
+  
+- COPILOT_AGENT_DEBUG (boolean)
+  * Current value: false
+  * Valid values: true, false
+  * Enables debug mode when true
+
+### Feature Flags:
+- COPILOT_FEATURE_FLAGS (comma-separated string)
+  * Current value: copilot_swe_agent_firewall_enabled_by_default,copilot_swe_agent_resolve_repo_images,copilot_swe_agent_vision,copilot_swe_agent_parallel_tool_execution,copilot_swe_agent_enable_security_tool,copilot_swe_agent_code_review,copilot_swe_agent_validation_agent_dependencies,copilot_swe_agent_secret_scanning_hook,copilot-feature-agentic-memory
+  * Available flags:
+    - copilot_swe_agent_firewall_enabled_by_default
+    - copilot_swe_agent_resolve_repo_images
+    - copilot_swe_agent_vision
+    - copilot_swe_agent_parallel_tool_execution
+    - copilot_swe_agent_enable_security_tool
+    - copilot_swe_agent_code_review
+    - copilot_swe_agent_validation_agent_dependencies
+    - copilot_swe_agent_secret_scanning_hook
+    - copilot-feature-agentic-memory
+
+### Experiments:
+- COPILOT_EXPERIMENTS (key:value pairs, semicolon-separated)
+  * Current value: ghpad_aa:false
+  * Format: experiment_name:true/false
+  * Valid experiments: ghpad_aa
+
+- COPILOT_EXPERIMENT_ASSIGNMENT_CONTEXT (string)
+  * Current value: copilot_t_ci:31333650;ghpad_aa_c:31385606;
+  * Contains experiment assignment context
+
+### MCP (Model Context Protocol):
+- COPILOT_MCP_ENABLED (boolean)
+  * Current value: true
+  * Valid values: true, false
+  * Enables MCP integration
+
+### Environment Source:
+- COPILOT_AGENT_SOURCE_ENVIRONMENT (string)
+  * Current value: production
+  * Known values: production, staging, development
+
+### Job Event Type:
+- COPILOT_JOB_EVENT_TYPE (string)
+  * Current value: pull_request_comment
+  * Known values: agents_panel, pull_request_comment
+
+### API Configuration:
+- COPILOT_API_URL (URL)
+  * Current value: https://api.githubcopilot.com
+  * Base API endpoint for Copilot
+
+- COPILOT_AGENT_CALLBACK_URL (URL)
+  * Current value: https://api.githubcopilot.com/agents/swe/agent
+  * Callback endpoint for agent
+
+## GITHUB ACTIONS CONFIGURABLE VARIABLES
+====================================================================
+
+### Repository Context:
+- GITHUB_REPOSITORY (string, format: owner/repo)
+- GITHUB_REPOSITORY_OWNER (string)
+- GITHUB_REF (string, format: refs/heads/branch or refs/tags/tag)
+- GITHUB_REF_NAME (string, branch or tag name)
+- GITHUB_REF_TYPE (string, values: branch, tag)
+- GITHUB_SHA (string, commit SHA)
+- GITHUB_WORKSPACE (path)
+
+### Workflow Context:
+- GITHUB_WORKFLOW (string, workflow name)
+- GITHUB_JOB (string, job name)
+- GITHUB_ACTION (string, action name)
+- GITHUB_RUN_ID (integer)
+- GITHUB_RUN_NUMBER (integer)
+- GITHUB_RUN_ATTEMPT (integer)
+
+### Actor Information:
+- GITHUB_ACTOR (string, username)
+- GITHUB_TRIGGERING_ACTOR (string, username)
+
+### API Endpoints:
+- GITHUB_API_URL (URL, default: https://api.github.com)
+- GITHUB_SERVER_URL (URL, default: https://github.com)
+- GITHUB_GRAPHQL_URL (URL)
+
+### Runner Configuration:
+- RUNNER_OS (string, values: Linux, Windows, macOS)
+- RUNNER_ARCH (string, values: X64, ARM64, ARM)
+- RUNNER_NAME (string)
+- RUNNER_TEMP (path)
+- RUNNER_TOOL_CACHE (path)
+- RUNNER_WORKSPACE (path)
+
+### File Command Paths (for setting outputs):
+- GITHUB_OUTPUT (path)
+- GITHUB_ENV (path)
+- GITHUB_PATH (path)
+- GITHUB_STATE (path)
+- GITHUB_STEP_SUMMARY (path)
+
+### Other Configurable:
+- GITHUB_RETENTION_DAYS (integer, default: 90)
+
+## ADDITIONAL DISCOVERED VARIABLES
+====================================================================
+
+### Trajectory Output:
+- CPD_SAVE_TRAJECTORY_OUTPUT (path)
+  * Current value: /home/runner/work/_temp/copilot-developer-action-main/dist/trajectory.md
+  * Saves agent trajectory/actions log
+
+### Security:
+- SECRET_SCANNING_URL (URL)
+  * Current value: https://scanning-api.github.com/api/v1/scan/multipart
+
+### Branch and Commit Info:
+- COPILOT_AGENT_BASE_COMMIT (string)
+  * Current value: copilot/show-environment-variables
+  * Base commit reference
+
+- COPILOT_AGENT_BRANCH_NAME (string)
+  * Current value: copilot/show-environment-variables
+
+- COPILOT_AGENT_PR_NUMBER (integer or empty)
+  * Current value: (empty)
+
+- COPILOT_AGENT_PR_COMMIT_COUNT (integer)
+  * Current value: 2
+
+- COPILOT_AGENT_ISSUE_NUMBER (integer)
+  * Current value: 0
+
+### Action Type:
+- COPILOT_AGENT_ACTION (string)
+  * Current value: fix-pr-comment
+  * Known values: fix, fix-pr-comment
+
+### Agent Identity:
+- COPILOT_AGENT_COMMIT_LOGIN (string)
+  * Current value: copilot-swe-agent[bot]
+
+- COPILOT_AGENT_COMMIT_EMAIL (email)
+  * Current value: 198982749+Copilot@users.noreply.github.com
+
+### Timing:
+- COPILOT_AGENT_START_TIME_SEC (unix timestamp)
+  * Current value: 1767309882
+
+### Injected Secrets:
+- COPILOT_AGENT_INJECTED_SECRET_NAMES (comma-separated string)
+  * Current value: (empty)
+  * Lists names of injected secrets
+
+### MCP Server:
+- COPILOT_AGENT_MCP_SERVER_TEMP (path)
+  * Current value: /home/runner/work/_temp/mcp-server
+
+### Runtime:
+- COPILOT_AGENT_RUNTIME_VERSION (string)
+  * Current value: runtime-6e3d81d67a7f84c04cc44350bfebecf655d06d27
+
+====================================================================
+SUMMARY OF CONFIGURABLE VARIABLES
+====================================================================
+
+Total Copilot Configuration Variables: 39
+Total GitHub Actions Variables: 30+
+Total Configurable Variables Found: 70+
+
+Main categories:
+1. Firewall and Security (7 variables)
+2. Timeout and Sessions (3 variables)
+3. Content Filtering (1 variable)
+4. Debugging and Evaluation (2 variables)
+5. Feature Flags and Experiments (3 variables)
+6. API and URLs (2 variables)
+7. Repository and Branch Context (10+ variables)
+8. Runner Configuration (6 variables)
+9. Agent Identity and Timing (5 variables)
+10. MCP Configuration (2 variables)
+
+====================================================================
