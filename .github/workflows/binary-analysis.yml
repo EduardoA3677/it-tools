@@ -1,0 +1,445 @@
+name: Binary Analysis Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_url:
+        description: 'URL to download the ZIP file'
+        required: true
+        type: string
+      analysis_name:
+        description: 'Name for this analysis (used in artifact naming)'
+        required: false
+        type: string
+        default: 'binary-analysis'
+
+jobs:
+  analyze-binaries:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install analysis tools
+        run: |
+          # Update package lists
+          sudo apt-get update
+          
+          # Install basic tools
+          sudo apt-get install -y wget unzip file binutils binwalk xxd
+          
+          # Install Java for apktool and jadx
+          sudo apt-get install -y openjdk-17-jdk
+          
+          # Install apktool
+          wget https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O apktool
+          wget https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O apktool.jar
+          chmod +x apktool
+          sudo mv apktool apktool.jar /usr/local/bin/
+          
+          # Install jadx
+          JADX_VERSION="1.5.0"
+          wget https://github.com/skylot/jadx/releases/download/v${JADX_VERSION}/jadx-${JADX_VERSION}.zip -O jadx.zip
+          unzip jadx.zip -d jadx
+          sudo mv jadx/bin/jadx* /usr/local/bin/
+          sudo mv jadx/lib /usr/local/lib/jadx
+          
+          # Verify installations
+          echo "=== Installed Tools ==="
+          apktool --version || echo "apktool not available"
+          jadx --version || echo "jadx not available"
+          readelf --version | head -1 || echo "readelf not available"
+          binwalk --help | head -1 || echo "binwalk not available"
+      
+      - name: Download and extract ZIP file
+        run: |
+          # Create working directories
+          mkdir -p downloads
+          mkdir -p extracted
+          mkdir -p analysis-results
+          
+          # Download the ZIP file
+          echo "Downloading ZIP from: ${{ inputs.zip_url }}"
+          wget -O downloads/archive.zip "${{ inputs.zip_url }}"
+          
+          # Extract the ZIP file
+          echo "Extracting ZIP file..."
+          unzip -q downloads/archive.zip -d extracted/
+          
+          echo "Extraction complete. Contents:"
+          ls -laR extracted/
+      
+      - name: Discover files for analysis
+        id: discover
+        run: |
+          # Create a list of files to analyze
+          echo "=== Discovering files for analysis ==="
+          
+          # Find all APK files
+          echo "APK files found:"
+          find extracted/ -type f -iname "*.apk" | tee analysis-results/apk-files.txt
+          
+          # Find all JAR files
+          echo "JAR files found:"
+          find extracted/ -type f -iname "*.jar" | tee analysis-results/jar-files.txt
+          
+          # Find all SO files
+          echo "SO files found:"
+          find extracted/ -type f -iname "*.so" | tee analysis-results/so-files.txt
+          
+          # Find binary files (executable)
+          echo "Binary/Executable files found:"
+          find extracted/ -type f -executable | tee analysis-results/binary-files.txt
+          
+          # Additional binary detection using 'file' command
+          echo "Analyzing file types..."
+          find extracted/ -type f -exec file {} \; | tee analysis-results/file-types.txt
+      
+      - name: Analyze APK files with apktool
+        continue-on-error: true
+        run: |
+          echo "=== Analyzing APK files with apktool ==="
+          mkdir -p analysis-results/apktool
+          
+          if [ -s analysis-results/apk-files.txt ]; then
+            while IFS= read -r apk_file; do
+              if [ -f "$apk_file" ]; then
+                echo "Processing: $apk_file"
+                base_name=$(basename "$apk_file" .apk)
+                output_dir="analysis-results/apktool/${base_name}"
+                
+                # Decode APK with apktool
+                apktool d "$apk_file" -o "$output_dir" -f 2>&1 | tee "analysis-results/apktool/${base_name}-apktool.log"
+                
+                # Generate summary
+                if [ -d "$output_dir" ]; then
+                  echo "Successfully decoded: $apk_file" >> analysis-results/apktool/summary.txt
+                  tree -L 3 "$output_dir" >> analysis-results/apktool/${base_name}-structure.txt 2>/dev/null || \
+                    find "$output_dir" -type f | head -50 >> analysis-results/apktool/${base_name}-structure.txt
+                else
+                  echo "Failed to decode: $apk_file" >> analysis-results/apktool/summary.txt
+                fi
+              fi
+            done < analysis-results/apk-files.txt
+          else
+            echo "No APK files found to analyze" > analysis-results/apktool/summary.txt
+          fi
+      
+      - name: Decompile APK and JAR files with jadx
+        continue-on-error: true
+        run: |
+          echo "=== Decompiling with jadx ==="
+          mkdir -p analysis-results/jadx
+          
+          # Process APK files
+          if [ -s analysis-results/apk-files.txt ]; then
+            while IFS= read -r apk_file; do
+              if [ -f "$apk_file" ]; then
+                echo "Decompiling APK: $apk_file"
+                base_name=$(basename "$apk_file" .apk)
+                output_dir="analysis-results/jadx/${base_name}"
+                
+                jadx "$apk_file" -d "$output_dir" 2>&1 | tee "analysis-results/jadx/${base_name}-jadx.log"
+                
+                # Count decompiled files
+                if [ -d "$output_dir" ]; then
+                  file_count=$(find "$output_dir" -type f -name "*.java" | wc -l)
+                  echo "Decompiled $file_count Java files from: $apk_file" >> analysis-results/jadx/summary.txt
+                fi
+              fi
+            done < analysis-results/apk-files.txt
+          fi
+          
+          # Process JAR files
+          if [ -s analysis-results/jar-files.txt ]; then
+            while IFS= read -r jar_file; do
+              if [ -f "$jar_file" ]; then
+                echo "Decompiling JAR: $jar_file"
+                base_name=$(basename "$jar_file" .jar)
+                output_dir="analysis-results/jadx/${base_name}"
+                
+                jadx "$jar_file" -d "$output_dir" 2>&1 | tee "analysis-results/jadx/${base_name}-jadx.log"
+                
+                # Count decompiled files
+                if [ -d "$output_dir" ]; then
+                  file_count=$(find "$output_dir" -type f -name "*.java" | wc -l)
+                  echo "Decompiled $file_count Java files from: $jar_file" >> analysis-results/jadx/summary.txt
+                fi
+              fi
+            done < analysis-results/jar-files.txt
+          fi
+          
+          if [ ! -f analysis-results/jadx/summary.txt ]; then
+            echo "No APK or JAR files found to decompile" > analysis-results/jadx/summary.txt
+          fi
+      
+      - name: Analyze SO files with readelf
+        continue-on-error: true
+        run: |
+          echo "=== Analyzing SO files with readelf ==="
+          mkdir -p analysis-results/readelf
+          
+          if [ -s analysis-results/so-files.txt ]; then
+            while IFS= read -r so_file; do
+              if [ -f "$so_file" ]; then
+                echo "Analyzing: $so_file"
+                base_name=$(basename "$so_file")
+                
+                # Run various readelf analyses
+                {
+                  echo "=== File: $so_file ==="
+                  echo ""
+                  echo "--- ELF Header ---"
+                  readelf -h "$so_file" 2>&1
+                  echo ""
+                  echo "--- Program Headers ---"
+                  readelf -l "$so_file" 2>&1
+                  echo ""
+                  echo "--- Section Headers ---"
+                  readelf -S "$so_file" 2>&1
+                  echo ""
+                  echo "--- Symbol Table ---"
+                  readelf -s "$so_file" 2>&1 | head -100
+                  echo ""
+                  echo "--- Dynamic Section ---"
+                  readelf -d "$so_file" 2>&1
+                  echo ""
+                } > "analysis-results/readelf/${base_name}-readelf.txt"
+                
+                echo "Analyzed: $so_file" >> analysis-results/readelf/summary.txt
+              fi
+            done < analysis-results/so-files.txt
+          else
+            echo "No SO files found to analyze" > analysis-results/readelf/summary.txt
+          fi
+      
+      - name: Analyze binary files with binwalk
+        continue-on-error: true
+        run: |
+          echo "=== Analyzing with binwalk ==="
+          mkdir -p analysis-results/binwalk
+          
+          # Combine all files for binwalk analysis
+          cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
+              analysis-results/so-files.txt analysis-results/binary-files.txt 2>/dev/null | \
+              sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
+          
+          if [ -s analysis-results/all-binaries.txt ]; then
+            while IFS= read -r binary_file; do
+              if [ -f "$binary_file" ]; then
+                echo "Analyzing: $binary_file"
+                base_name=$(basename "$binary_file")
+                
+                # Run binwalk analysis
+                binwalk "$binary_file" > "analysis-results/binwalk/${base_name}-binwalk.txt" 2>&1
+                
+                # Try extraction (in separate directory per file)
+                extraction_dir="analysis-results/binwalk/${base_name}-extracted"
+                mkdir -p "$extraction_dir"
+                binwalk -e "$binary_file" --directory="$extraction_dir" 2>&1 | \
+                  tee "analysis-results/binwalk/${base_name}-extraction.log"
+                
+                echo "Analyzed: $binary_file" >> analysis-results/binwalk/summary.txt
+              fi
+            done < analysis-results/all-binaries.txt
+          else
+            echo "No binary files found to analyze" > analysis-results/binwalk/summary.txt
+          fi
+      
+      - name: Perform strings analysis
+        continue-on-error: true
+        run: |
+          echo "=== Extracting strings from binaries ==="
+          mkdir -p analysis-results/strings
+          
+          if [ -s analysis-results/all-binaries.txt ]; then
+            while IFS= read -r binary_file; do
+              if [ -f "$binary_file" ]; then
+                echo "Extracting strings from: $binary_file"
+                base_name=$(basename "$binary_file")
+                
+                # Extract strings (minimum length 6 characters)
+                strings -n 6 "$binary_file" > "analysis-results/strings/${base_name}-strings.txt" 2>&1
+                
+                # Extract printable strings with offsets
+                strings -t x -n 6 "$binary_file" > "analysis-results/strings/${base_name}-strings-offset.txt" 2>&1
+                
+                echo "Processed: $binary_file" >> analysis-results/strings/summary.txt
+              fi
+            done < analysis-results/all-binaries.txt
+          else
+            echo "No binary files found for strings analysis" > analysis-results/strings/summary.txt
+          fi
+      
+      - name: Generate analysis report
+        run: |
+          echo "=== Generating Analysis Report ==="
+          
+          REPORT_FILE="analysis-results/ANALYSIS_REPORT.md"
+          
+          cat > "$REPORT_FILE" << 'EOF'
+          # Binary Analysis Report
+          
+          ## Analysis Information
+          
+          - **Analysis Name**: ${{ inputs.analysis_name }}
+          - **ZIP URL**: ${{ inputs.zip_url }}
+          - **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Workflow Run**: ${{ github.run_number }}
+          
+          ## Summary
+          
+          EOF
+          
+          # Add file counts
+          echo "### Files Discovered" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
+          echo "- APK files: $(wc -l < analysis-results/apk-files.txt 2>/dev/null || echo 0)" >> "$REPORT_FILE"
+          echo "- JAR files: $(wc -l < analysis-results/jar-files.txt 2>/dev/null || echo 0)" >> "$REPORT_FILE"
+          echo "- SO files: $(wc -l < analysis-results/so-files.txt 2>/dev/null || echo 0)" >> "$REPORT_FILE"
+          echo "- Binary files: $(wc -l < analysis-results/binary-files.txt 2>/dev/null || echo 0)" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
+          
+          # Add tool summaries
+          echo "### Analysis Results" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
+          
+          if [ -f analysis-results/apktool/summary.txt ]; then
+            echo "#### Apktool Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/apktool/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/jadx/summary.txt ]; then
+            echo "#### Jadx Decompilation" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/jadx/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/readelf/summary.txt ]; then
+            echo "#### Readelf Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/readelf/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/binwalk/summary.txt ]; then
+            echo "#### Binwalk Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/binwalk/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          # Add file list
+          echo "### Analyzed Files" >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
+          
+          if [ -s analysis-results/apk-files.txt ]; then
+            echo "#### APK Files" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/apk-files.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -s analysis-results/jar-files.txt ]; then
+            echo "#### JAR Files" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/jar-files.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -s analysis-results/so-files.txt ]; then
+            echo "#### SO Files" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/so-files.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          echo "Analysis report generated successfully"
+          cat "$REPORT_FILE"
+      
+      - name: Create analysis artifact structure
+        run: |
+          echo "=== Preparing artifacts ==="
+          
+          # Create a clean artifact directory
+          mkdir -p final-artifacts
+          
+          # Copy analysis results
+          cp -r analysis-results final-artifacts/
+          
+          # Copy extracted files (limited to prevent huge artifacts)
+          if [ -d extracted ]; then
+            mkdir -p final-artifacts/extracted-contents
+            # Copy file structure and small files only
+            find extracted -type f -size -10M -exec cp --parents {} final-artifacts/extracted-contents/ \; 2>/dev/null || true
+          fi
+          
+          # Create a manifest of all files
+          find final-artifacts -type f > final-artifacts/manifest.txt
+          
+          echo "Artifact preparation complete"
+          du -sh final-artifacts/
+      
+      - name: Upload analysis results to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.analysis_name }}-results
+          path: final-artifacts/
+          retention-days: 90
+      
+      - name: Create analysis repository (optional)
+        continue-on-error: true
+        run: |
+          echo "=== Creating analysis repository structure ==="
+          
+          # Initialize a new git repository in the analysis results
+          cd final-artifacts
+          git init
+          git config user.name "Binary Analysis Bot"
+          git config user.email "analysis@github-actions"
+          
+          # Create README for the analysis repo
+          cat > README.md << 'EOFREADME'
+          # Binary Analysis Results
+          
+          This repository contains the automated analysis results of binary files.
+          
+          ## Contents
+          
+          - `analysis-results/` - Complete analysis outputs from various tools
+          - `extracted-contents/` - Extracted file contents (limited to files < 10MB)
+          - `ANALYSIS_REPORT.md` - Summary report of the analysis
+          
+          ## Tools Used
+          
+          - **apktool** - Android APK decompilation
+          - **jadx** - Java/Android decompilation
+          - **readelf** - ELF binary analysis
+          - **binwalk** - Binary file analysis and extraction
+          - **strings** - String extraction from binaries
+          
+          ## Workflow Information
+          
+          - Generated by: ${{ github.workflow }}
+          - Run Number: ${{ github.run_number }}
+          - Repository: ${{ github.repository }}
+          
+          EOFREADME
+          
+          git add .
+          git commit -m "Initial analysis results commit"
+          
+          echo "Analysis repository structure created"
+          echo "To push to a remote repository, configure the remote URL and push manually"
+          echo "Example: git remote add origin <URL> && git push -u origin main"
