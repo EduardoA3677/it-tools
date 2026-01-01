@@ -9,11 +9,20 @@ This repository contains a GitHub Actions workflow for automated analysis of bin
 - **Automatic ZIP Download & Extraction**: Downloads and extracts ZIP archives containing binaries
 - **Recursive File Discovery**: Automatically finds all APK, JAR, SO, and binary files within the extracted archive
 - **Multi-Tool Analysis**:
-  - **apktool**: Decompiles Android APK files
+  - **apktool**: Decompiles Android APK files to readable resources and smali bytecode
   - **jadx**: Decompiles APK and JAR files to Java source code
+  - **dex2jar**: Converts Android DEX files to JAR format
+  - **APKiD**: Identifies packers, obfuscators, and compilers in APK files
+  - **androguard**: Android application analysis and reverse engineering
   - **readelf**: Analyzes ELF binary format (shared objects and executables)
+  - **objdump**: Displays object file information and disassembly
+  - **nm**: Lists symbol tables from object files
+  - **ldd**: Shows shared library dependencies
   - **binwalk**: Analyzes and extracts embedded files from binaries
+  - **radare2**: Advanced binary analysis and reverse engineering framework
   - **strings**: Extracts readable strings from binary files
+  - **hexdump**: Creates hexadecimal dumps of binary files
+  - **file**: Detailed file type identification with MIME types
 - **Comprehensive Reporting**: Generates detailed analysis reports
 - **Artifact Storage**: Uploads all analysis results to GitHub Actions artifacts
 - **Analysis Repository**: Creates a git repository structure with all results
@@ -38,7 +47,7 @@ analysis_name: app-release-v1.0-analysis
 
 ### Workflow Steps
 
-1. **Setup**: Installs all required analysis tools (apktool, jadx, readelf, binwalk)
+1. **Setup**: Installs all required analysis tools (apktool, jadx, dex2jar, APKiD, androguard, readelf, objdump, nm, ldd, binwalk, radare2, and more)
 2. **Download**: Downloads the specified ZIP file
 3. **Extract**: Extracts all contents of the ZIP file
 4. **Discover**: Recursively searches for all analyzable files:
@@ -47,11 +56,13 @@ analysis_name: app-release-v1.0-analysis
    - *.so files
    - Binary/executable files
 5. **Analyze**:
-   - APK files are decompiled with apktool and jadx
+   - APK files are analyzed with apktool, jadx, dex2jar, APKiD, and androguard
    - JAR files are decompiled with jadx
-   - SO files are analyzed with readelf
-   - All binaries are analyzed with binwalk
+   - SO files are analyzed with readelf, objdump, nm, and ldd
+   - All binaries are analyzed with binwalk, radare2, objdump, and nm
    - Strings are extracted from all binaries
+   - Hexdumps are created for binary inspection
+   - Detailed file type identification is performed
 6. **Report**: Generates a comprehensive markdown report
 7. **Upload**: Uploads all results to GitHub Actions artifacts
 
@@ -71,8 +82,33 @@ final-artifacts/
 │   │   ├── [app-name]/       # Decompiled Java source
 │   │   ├── [app-name]-jadx.log
 │   │   └── summary.txt
+│   ├── dex2jar/              # DEX to JAR conversion
+│   │   ├── [app-name].jar
+│   │   ├── [app-name]-dex2jar.log
+│   │   ├── [app-name]-contents.txt
+│   │   └── summary.txt
+│   ├── apkid/                # APK identification
+│   │   ├── [app-name]-apkid.txt
+│   │   └── summary.txt
+│   ├── androguard/           # Androguard analysis
+│   │   ├── [app-name]-androguard.txt
+│   │   └── summary.txt
 │   ├── readelf/              # ELF binary analysis
 │   │   ├── [file]-readelf.txt
+│   │   └── summary.txt
+│   ├── objdump/              # Object dump analysis
+│   │   ├── [file]-objdump.txt
+│   │   └── summary.txt
+│   ├── nm/                   # Symbol analysis
+│   │   ├── [file]-all-symbols.txt
+│   │   ├── [file]-dynamic-symbols.txt
+│   │   ├── [file]-demangled-symbols.txt
+│   │   └── summary.txt
+│   ├── ldd/                  # Library dependencies
+│   │   ├── [file]-deps.txt
+│   │   └── summary.txt
+│   ├── radare2/              # Radare2 analysis
+│   │   ├── [file]-r2.txt
 │   │   └── summary.txt
 │   ├── binwalk/              # Binwalk analysis and extraction
 │   │   ├── [file]-binwalk.txt
@@ -82,6 +118,12 @@ final-artifacts/
 │   ├── strings/              # Extracted strings
 │   │   ├── [file]-strings.txt
 │   │   ├── [file]-strings-offset.txt
+│   │   └── summary.txt
+│   ├── hexdump/              # Hexadecimal dumps
+│   │   ├── [file]-hexdump.txt
+│   │   └── summary.txt
+│   ├── file-analysis/        # File type identification
+│   │   ├── [file]-detailed.txt
 │   │   └── summary.txt
 │   ├── ANALYSIS_REPORT.md    # Complete analysis report
 │   ├── apk-files.txt         # List of APK files found
@@ -118,10 +160,19 @@ The workflow generates a comprehensive `ANALYSIS_REPORT.md` that includes:
 
 ### Tool Versions
 
-- apktool: 2.9.3
-- jadx: 1.5.0
-- readelf: Latest from binutils
-- binwalk: Latest from Ubuntu repositories
+- **apktool**: 2.9.3
+- **jadx**: 1.5.0
+- **dex2jar**: 2.1
+- **APKiD**: Latest from pip
+- **androguard**: Latest from Ubuntu repositories
+- **readelf**: Latest from binutils
+- **objdump**: Latest from binutils
+- **nm**: Latest from binutils
+- **ldd**: Latest from Ubuntu repositories
+- **binwalk**: Latest from Ubuntu repositories
+- **radare2**: Latest from Ubuntu repositories
+- **Ghidra**: 11.0.1 (optional, headless mode)
+- **Python tools**: pefile, pyelftools, capstone, r2pipe, yara-python
 
 ### Notes
 
@@ -129,4 +180,5 @@ The workflow generates a comprehensive `ANALYSIS_REPORT.md` that includes:
 - Analysis artifacts are retained for 90 days
 - Large files (> 10MB) are excluded from the artifact upload to prevent excessive storage usage
 - All analysis steps use `continue-on-error: true` to ensure partial results even if some tools fail
+- Some tools (radare2, hexdump) process only a limited number of files to avoid timeouts
 - The workflow creates a git repository structure in the results for easy versioning and sharing

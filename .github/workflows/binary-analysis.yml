@@ -29,6 +29,35 @@ jobs:
           # Install basic tools
           sudo apt-get install -y wget unzip file binutils binwalk xxd
           
+          # Install additional binary analysis tools
+          sudo apt-get install -y \
+            strace ltrace \
+            gdb \
+            radare2 \
+            objdump \
+            nm \
+            ldd \
+            hexdump \
+            7zip \
+            p7zip-full \
+            unrar \
+            cabextract \
+            cpio \
+            rpm2cpio \
+            python3-pip \
+            python3-magic \
+            python3-pefile \
+            androguard \
+            android-sdk-platform-tools-common
+          
+          # Install Python analysis tools
+          sudo pip3 install --break-system-packages \
+            pefile \
+            pyelftools \
+            capstone \
+            r2pipe \
+            yara-python || true
+          
           # Install Java for apktool and jadx
           sudo apt-get install -y openjdk-17-jdk
           
@@ -45,12 +74,39 @@ jobs:
           sudo mv jadx/bin/jadx* /usr/local/bin/
           sudo mv jadx/lib /usr/local/lib/jadx
           
+          # Install dex2jar
+          DEX2JAR_VERSION="2.1"
+          wget https://github.com/pxb1988/dex2jar/releases/download/v${DEX2JAR_VERSION}/dex2jar-${DEX2JAR_VERSION}.zip -O dex2jar.zip
+          unzip dex2jar.zip -d dex2jar
+          chmod +x dex2jar/dex2jar-*/d2j-*.sh
+          sudo cp -r dex2jar/dex2jar-*/ /usr/local/lib/dex2jar
+          sudo ln -s /usr/local/lib/dex2jar/d2j-dex2jar.sh /usr/local/bin/d2j-dex2jar || true
+          
+          # Install APKiD for APK identification
+          sudo pip3 install --break-system-packages apkid || true
+          
+          # Install Ghidra (headless analysis)
+          GHIDRA_VERSION="11.0.1"
+          GHIDRA_DATE="20240130"
+          wget https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/ghidra_${GHIDRA_VERSION}_PUBLIC_${GHIDRA_DATE}.zip -O ghidra.zip || true
+          if [ -f ghidra.zip ]; then
+            unzip -q ghidra.zip -d /tmp/
+            sudo mv /tmp/ghidra_* /opt/ghidra || true
+          fi
+          
           # Verify installations
           echo "=== Installed Tools ==="
           apktool --version || echo "apktool not available"
           jadx --version || echo "jadx not available"
           readelf --version | head -1 || echo "readelf not available"
           binwalk --help | head -1 || echo "binwalk not available"
+          objdump --version | head -1 || echo "objdump not available"
+          nm --version | head -1 || echo "nm not available"
+          r2 -v || echo "radare2 not available"
+          file --version || echo "file not available"
+          androguard --version || echo "androguard not available"
+          d2j-dex2jar --help | head -1 || echo "dex2jar not available"
+          apkid --help | head -1 || echo "apkid not available"
       
       - name: Download and extract ZIP file
         run: |
@@ -272,6 +328,281 @@ jobs:
             echo "No binary files found for strings analysis" > analysis-results/strings/summary.txt
           fi
       
+      - name: Analyze with objdump
+        continue-on-error: true
+        run: |
+          echo "=== Analyzing with objdump ==="
+          mkdir -p analysis-results/objdump
+          
+          if [ -s analysis-results/all-binaries.txt ]; then
+            while IFS= read -r binary_file; do
+              if [ -f "$binary_file" ]; then
+                echo "Analyzing: $binary_file"
+                base_name=$(basename "$binary_file")
+                
+                # Run objdump analyses
+                {
+                  echo "=== File: $binary_file ==="
+                  echo ""
+                  echo "--- File Headers ---"
+                  objdump -f "$binary_file" 2>&1
+                  echo ""
+                  echo "--- Section Headers ---"
+                  objdump -h "$binary_file" 2>&1
+                  echo ""
+                  echo "--- Symbol Table ---"
+                  objdump -t "$binary_file" 2>&1 | head -200
+                  echo ""
+                  echo "--- Dynamic Symbols ---"
+                  objdump -T "$binary_file" 2>&1 | head -200
+                  echo ""
+                  echo "--- Disassembly (first 100 lines) ---"
+                  objdump -d "$binary_file" 2>&1 | head -100
+                  echo ""
+                } > "analysis-results/objdump/${base_name}-objdump.txt"
+                
+                echo "Analyzed: $binary_file" >> analysis-results/objdump/summary.txt
+              fi
+            done < analysis-results/all-binaries.txt
+          else
+            echo "No binary files found for objdump analysis" > analysis-results/objdump/summary.txt
+          fi
+      
+      - name: Analyze with nm (symbol extraction)
+        continue-on-error: true
+        run: |
+          echo "=== Analyzing symbols with nm ==="
+          mkdir -p analysis-results/nm
+          
+          if [ -s analysis-results/all-binaries.txt ]; then
+            while IFS= read -r binary_file; do
+              if [ -f "$binary_file" ]; then
+                echo "Extracting symbols from: $binary_file"
+                base_name=$(basename "$binary_file")
+                
+                # Extract all symbols
+                nm -a "$binary_file" > "analysis-results/nm/${base_name}-all-symbols.txt" 2>&1
+                
+                # Extract dynamic symbols
+                nm -D "$binary_file" > "analysis-results/nm/${base_name}-dynamic-symbols.txt" 2>&1
+                
+                # Demangle C++ symbols
+                nm -C "$binary_file" > "analysis-results/nm/${base_name}-demangled-symbols.txt" 2>&1
+                
+                echo "Analyzed: $binary_file" >> analysis-results/nm/summary.txt
+              fi
+            done < analysis-results/all-binaries.txt
+          else
+            echo "No binary files found for nm analysis" > analysis-results/nm/summary.txt
+          fi
+      
+      - name: Analyze with radare2
+        continue-on-error: true
+        run: |
+          echo "=== Analyzing with radare2 ==="
+          mkdir -p analysis-results/radare2
+          
+          if [ -s analysis-results/all-binaries.txt ]; then
+            # Limit to first 10 files to avoid timeout
+            head -10 analysis-results/all-binaries.txt > analysis-results/radare2-files.txt
+            
+            while IFS= read -r binary_file; do
+              if [ -f "$binary_file" ]; then
+                echo "Analyzing: $binary_file"
+                base_name=$(basename "$binary_file")
+                
+                # Run radare2 analysis
+                {
+                  echo "=== File: $binary_file ==="
+                  echo ""
+                  echo "--- File Info ---"
+                  r2 -q -c "i" "$binary_file" 2>&1
+                  echo ""
+                  echo "--- Imports ---"
+                  r2 -q -c "ii" "$binary_file" 2>&1
+                  echo ""
+                  echo "--- Exports ---"
+                  r2 -q -c "iE" "$binary_file" 2>&1
+                  echo ""
+                  echo "--- Sections ---"
+                  r2 -q -c "iS" "$binary_file" 2>&1
+                  echo ""
+                  echo "--- Strings ---"
+                  r2 -q -c "iz" "$binary_file" 2>&1 | head -100
+                  echo ""
+                  echo "--- Functions (first 50) ---"
+                  r2 -q -c "aaa; afl" "$binary_file" 2>&1 | head -50
+                  echo ""
+                } > "analysis-results/radare2/${base_name}-r2.txt"
+                
+                echo "Analyzed: $binary_file" >> analysis-results/radare2/summary.txt
+              fi
+            done < analysis-results/radare2-files.txt
+          else
+            echo "No binary files found for radare2 analysis" > analysis-results/radare2/summary.txt
+          fi
+      
+      - name: Analyze APK with APKiD
+        continue-on-error: true
+        run: |
+          echo "=== Analyzing APK with APKiD ==="
+          mkdir -p analysis-results/apkid
+          
+          if [ -s analysis-results/apk-files.txt ]; then
+            while IFS= read -r apk_file; do
+              if [ -f "$apk_file" ]; then
+                echo "Analyzing: $apk_file"
+                base_name=$(basename "$apk_file" .apk)
+                
+                # Run APKiD for packer/compiler detection
+                apkid "$apk_file" > "analysis-results/apkid/${base_name}-apkid.txt" 2>&1
+                
+                echo "Analyzed: $apk_file" >> analysis-results/apkid/summary.txt
+              fi
+            done < analysis-results/apk-files.txt
+          else
+            echo "No APK files found for APKiD analysis" > analysis-results/apkid/summary.txt
+          fi
+      
+      - name: Convert DEX to JAR with dex2jar
+        continue-on-error: true
+        run: |
+          echo "=== Converting DEX to JAR with dex2jar ==="
+          mkdir -p analysis-results/dex2jar
+          
+          if [ -s analysis-results/apk-files.txt ]; then
+            while IFS= read -r apk_file; do
+              if [ -f "$apk_file" ]; then
+                echo "Converting: $apk_file"
+                base_name=$(basename "$apk_file" .apk)
+                
+                # Convert APK to JAR
+                d2j-dex2jar "$apk_file" -o "analysis-results/dex2jar/${base_name}.jar" 2>&1 | \
+                  tee "analysis-results/dex2jar/${base_name}-dex2jar.log"
+                
+                if [ -f "analysis-results/dex2jar/${base_name}.jar" ]; then
+                  echo "Successfully converted: $apk_file" >> analysis-results/dex2jar/summary.txt
+                  
+                  # List contents of generated JAR
+                  jar tf "analysis-results/dex2jar/${base_name}.jar" > \
+                    "analysis-results/dex2jar/${base_name}-contents.txt" 2>&1
+                else
+                  echo "Failed to convert: $apk_file" >> analysis-results/dex2jar/summary.txt
+                fi
+              fi
+            done < analysis-results/apk-files.txt
+          else
+            echo "No APK files found for dex2jar conversion" > analysis-results/dex2jar/summary.txt
+          fi
+      
+      - name: Analyze with androguard
+        continue-on-error: true
+        run: |
+          echo "=== Analyzing with androguard ==="
+          mkdir -p analysis-results/androguard
+          
+          if [ -s analysis-results/apk-files.txt ]; then
+            while IFS= read -r apk_file; do
+              if [ -f "$apk_file" ]; then
+                echo "Analyzing: $apk_file"
+                base_name=$(basename "$apk_file" .apk)
+                
+                # Use androguard to analyze APK
+                {
+                  echo "=== File: $apk_file ==="
+                  echo ""
+                  androguard analyze "$apk_file" 2>&1 || androlyze -s "$apk_file" 2>&1
+                  echo ""
+                } > "analysis-results/androguard/${base_name}-androguard.txt"
+                
+                echo "Analyzed: $apk_file" >> analysis-results/androguard/summary.txt
+              fi
+            done < analysis-results/apk-files.txt
+          else
+            echo "No APK files found for androguard analysis" > analysis-results/androguard/summary.txt
+          fi
+      
+      - name: Check library dependencies with ldd
+        continue-on-error: true
+        run: |
+          echo "=== Checking library dependencies with ldd ==="
+          mkdir -p analysis-results/ldd
+          
+          if [ -s analysis-results/so-files.txt ]; then
+            while IFS= read -r so_file; do
+              if [ -f "$so_file" ]; then
+                echo "Checking dependencies: $so_file"
+                base_name=$(basename "$so_file")
+                
+                # Check library dependencies
+                ldd "$so_file" > "analysis-results/ldd/${base_name}-deps.txt" 2>&1
+                
+                echo "Analyzed: $so_file" >> analysis-results/ldd/summary.txt
+              fi
+            done < analysis-results/so-files.txt
+          else
+            echo "No SO files found for ldd analysis" > analysis-results/ldd/summary.txt
+          fi
+      
+      - name: Hexdump analysis for suspicious patterns
+        continue-on-error: true
+        run: |
+          echo "=== Creating hexdumps ==="
+          mkdir -p analysis-results/hexdump
+          
+          if [ -s analysis-results/all-binaries.txt ]; then
+            # Limit to first 20 files and first 1000 lines each
+            head -20 analysis-results/all-binaries.txt > analysis-results/hexdump-files.txt
+            
+            while IFS= read -r binary_file; do
+              if [ -f "$binary_file" ]; then
+                echo "Creating hexdump: $binary_file"
+                base_name=$(basename "$binary_file")
+                
+                # Create hexdump (first 64KB only)
+                hexdump -C "$binary_file" 2>&1 | head -1000 > \
+                  "analysis-results/hexdump/${base_name}-hexdump.txt"
+                
+                echo "Processed: $binary_file" >> analysis-results/hexdump/summary.txt
+              fi
+            done < analysis-results/hexdump-files.txt
+          else
+            echo "No binary files found for hexdump" > analysis-results/hexdump/summary.txt
+          fi
+      
+      - name: File type identification
+        continue-on-error: true
+        run: |
+          echo "=== Detailed file type identification ==="
+          mkdir -p analysis-results/file-analysis
+          
+          if [ -s analysis-results/all-binaries.txt ]; then
+            while IFS= read -r binary_file; do
+              if [ -f "$binary_file" ]; then
+                base_name=$(basename "$binary_file")
+                
+                # Detailed file analysis
+                {
+                  echo "=== File: $binary_file ==="
+                  echo ""
+                  echo "--- file command ---"
+                  file -b "$binary_file" 2>&1
+                  echo ""
+                  echo "--- file with MIME ---"
+                  file -b --mime "$binary_file" 2>&1
+                  echo ""
+                  echo "--- file verbose ---"
+                  file -b -z "$binary_file" 2>&1
+                  echo ""
+                } > "analysis-results/file-analysis/${base_name}-detailed.txt"
+              fi
+            done < analysis-results/all-binaries.txt
+            
+            echo "File type analysis completed" > analysis-results/file-analysis/summary.txt
+          else
+            echo "No binary files found" > analysis-results/file-analysis/summary.txt
+          fi
+      
       - name: Generate analysis report
         run: |
           echo "=== Generating Analysis Report ==="
@@ -333,6 +664,86 @@ jobs:
             echo "#### Binwalk Analysis" >> "$REPORT_FILE"
             echo '```' >> "$REPORT_FILE"
             cat analysis-results/binwalk/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/objdump/summary.txt ]; then
+            echo "#### Objdump Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/objdump/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/nm/summary.txt ]; then
+            echo "#### NM Symbol Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/nm/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/radare2/summary.txt ]; then
+            echo "#### Radare2 Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/radare2/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/apkid/summary.txt ]; then
+            echo "#### APKiD Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/apkid/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/dex2jar/summary.txt ]; then
+            echo "#### Dex2jar Conversion" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/dex2jar/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/androguard/summary.txt ]; then
+            echo "#### Androguard Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/androguard/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/ldd/summary.txt ]; then
+            echo "#### Library Dependencies (ldd)" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/ldd/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/strings/summary.txt ]; then
+            echo "#### Strings Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/strings/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/hexdump/summary.txt ]; then
+            echo "#### Hexdump Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/hexdump/summary.txt >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+          fi
+          
+          if [ -f analysis-results/file-analysis/summary.txt ]; then
+            echo "#### File Type Analysis" >> "$REPORT_FILE"
+            echo '```' >> "$REPORT_FILE"
+            cat analysis-results/file-analysis/summary.txt >> "$REPORT_FILE"
             echo '```' >> "$REPORT_FILE"
             echo "" >> "$REPORT_FILE"
           fi
