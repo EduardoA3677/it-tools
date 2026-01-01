@@ -292,8 +292,6 @@ Always begin by reading `ANALYSIS_REPORT.md` to get an overview of:
 5. **Deep Inspection**: Use binwalk, radare2, and hexdump for detailed analysis
 6. **String Analysis**: Search strings output for sensitive information
 7. **Cross-Reference**: Correlate findings across different tools
-4. **Deep Inspection**: Use binwalk and strings for detailed analysis
-5. **Cross-Reference**: Correlate findings across different tools
 
 ### 3. Security-Focused Analysis
 
