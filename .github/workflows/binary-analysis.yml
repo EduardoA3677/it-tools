@@ -80,8 +80,8 @@ jobs:
           DEX2JAR_VERSION="2.1"
           wget https://github.com/pxb1988/dex2jar/releases/download/v${DEX2JAR_VERSION}/dex2jar-${DEX2JAR_VERSION}.zip -O dex2jar.zip
           unzip dex2jar.zip -d dex2jar
-          chmod +x dex2jar/dex2jar-*/d2j-*.sh
-          sudo cp -r dex2jar/dex2jar-*/ /usr/local/lib/dex2jar
+          chmod +x dex2jar/*/d2j-*.sh
+          sudo cp -r dex2jar/*/ /usr/local/lib/dex2jar
           sudo ln -s /usr/local/lib/dex2jar/d2j-dex2jar.sh /usr/local/bin/d2j-dex2jar || true
           
           # Install APKiD for APK identification
