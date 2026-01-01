@@ -809,14 +809,58 @@ jobs:
           path: final-artifacts/
           retention-days: 90
       
+      - name: Install Git LFS
+        run: |
+          # Install Git LFS (should already be available on ubuntu-latest)
+          git lfs version || (sudo apt-get update && sudo apt-get install -y git-lfs)
+          echo "Git LFS installed successfully"
+      
+      - name: Track large files with Git LFS
+        run: |
+          cd final-artifacts
+          
+          # Initialize git repository first (needed for git lfs)
+          git init
+          
+          # Initialize Git LFS
+          git lfs install
+          
+          # Find files larger than 99MB and track them with Git LFS
+          echo "Scanning for files larger than 99MB..."
+          LARGE_FILES_FOUND=false
+          
+          # Find files larger than 99MB (99 * 1024 * 1024 bytes = 103,809,024 bytes = 99 MiB)
+          # Using MiB (binary) threshold to stay safely under GitHub's 100MB limit
+          while IFS= read -r -d '' file; do
+            if [ -f "$file" ]; then
+              size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
+              if [ "$size" -gt 103809024 ]; then
+                LARGE_FILES_FOUND=true
+                # Calculate size in MB for display (without bc dependency)
+                size_mb=$((size / 1024 / 1024))
+                echo "Found large file: $file (${size_mb}MB)"
+                
+                # Track this file pattern with git lfs
+                git lfs track "$file"
+              fi
+            fi
+          done < <(find . -type f -print0)
+          
+          if [ "$LARGE_FILES_FOUND" = true ]; then
+            echo "✅ Large files tracked with Git LFS"
+            echo "Git LFS tracking patterns:"
+            cat .gitattributes
+          else
+            echo "ℹ️  No files larger than 99MB found"
+          fi
+      
       - name: Create analysis repository (optional)
         continue-on-error: true
         run: |
           echo "=== Creating analysis repository structure ==="
           
-          # Initialize a new git repository in the analysis results
+          # Git repository was already initialized in the Git LFS step
           cd final-artifacts
-          git init
           git config user.name "Binary Analysis Bot"
           git config user.email "analysis@github-actions"
           
@@ -836,9 +880,29 @@ jobs:
           
           - **apktool** - Android APK decompilation
           - **jadx** - Java/Android decompilation
+          - **dex2jar** - DEX to JAR conversion
+          - **APKiD** - Packer/obfuscator detection
+          - **androguard** - Android application analysis
           - **readelf** - ELF binary analysis
+          - **objdump** - Object file analysis
+          - **nm** - Symbol table extraction
+          - **ldd** - Library dependency checking
           - **binwalk** - Binary file analysis and extraction
+          - **radare2** - Advanced binary analysis
           - **strings** - String extraction from binaries
+          - **hexdump** - Hexadecimal dumps
+          - **file** - File type identification
+          
+          ## Large Files
+          
+          Files larger than 99MB are tracked with Git LFS to comply with GitHub's file size limits.
+          If you see `.gitattributes` in this repository, some files are stored in Git LFS.
+          
+          To clone this repository with large files:
+          ```bash
+          git lfs install
+          git clone <repository-url>
+          ```
           
           ## Workflow Information
           

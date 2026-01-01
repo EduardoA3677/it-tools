@@ -152,6 +152,19 @@ The workflow generates a comprehensive `ANALYSIS_REPORT.md` that includes:
 - Results from each analysis tool
 - Complete file listings
 
+### Git LFS for Large Files
+
+The workflow automatically handles large files using Git LFS (Large File Storage):
+
+- Files larger than 99MB are automatically tracked with Git LFS
+- This ensures compliance with GitHub's 100MB file size limit
+- The analysis repository can be pushed to GitHub without size limit errors
+- If cloning a repository with LFS-tracked files, install Git LFS first:
+  ```bash
+  git lfs install
+  git clone <repository-url>
+  ```
+
 ### Requirements
 
 - A publicly accessible URL to a ZIP file containing binaries
@@ -182,3 +195,5 @@ The workflow generates a comprehensive `ANALYSIS_REPORT.md` that includes:
 - All analysis steps use `continue-on-error: true` to ensure partial results even if some tools fail
 - Some tools (radare2, hexdump) process only a limited number of files to avoid timeouts
 - The workflow creates a git repository structure in the results for easy versioning and sharing
+- **Git LFS Support**: Files larger than 99MB are automatically tracked with Git LFS to comply with GitHub's 100MB file size limit
+- If you plan to push the analysis results to a GitHub repository, Git LFS will handle large files transparently

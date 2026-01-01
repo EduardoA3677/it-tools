@@ -122,6 +122,42 @@ Located in `analysis-results/jadx/`:
 - Hardcoded secrets or credentials
 - Code quality and security issues
 
+### Dex2jar Output
+
+Located in `analysis-results/dex2jar/`:
+- **Converted JAR files**: DEX files converted to standard JAR format
+- **dex2jar.log**: Conversion log
+- **contents.txt**: List of classes in the JAR
+
+**What to look for**:
+- Successfully converted classes
+- Conversion errors indicating obfuscation or packing
+- JAR files can be further analyzed with Java decompilers
+
+### APKiD Output
+
+Located in `analysis-results/apkid/`:
+- **Packer detection**: Identifies packers and obfuscators used
+- **Compiler identification**: Detects the compiler/build tools used
+
+**What to look for**:
+- Known packers (e.g., jiagu, qihoo, baidu)
+- Obfuscation techniques (ProGuard, DexGuard, etc.)
+- Custom or unusual compilation methods
+
+### Androguard Output
+
+Located in `analysis-results/androguard/`:
+- **APK analysis**: Detailed Android application analysis
+- **Permission analysis**: Permission usage patterns
+- **Component analysis**: Activities, services, receivers
+
+**What to look for**:
+- Security vulnerabilities
+- Privacy concerns
+- Malware indicators
+- API usage patterns
+
 ### Readelf Output
 
 Located in `analysis-results/readelf/`:
@@ -136,6 +172,59 @@ Located in `analysis-results/readelf/`:
 - Security features (NX, PIE, RELRO)
 - Imported/exported functions
 - Library dependencies
+
+### Objdump Output
+
+Located in `analysis-results/objdump/`:
+- **File headers**: Object file information
+- **Section headers**: Detailed section information
+- **Symbol tables**: All symbols with types
+- **Disassembly**: Assembly code (limited to first 100 lines)
+
+**What to look for**:
+- Function names and addresses
+- Code organization
+- Import/export tables
+- Assembly patterns for vulnerability research
+
+### NM Output
+
+Located in `analysis-results/nm/`:
+- **all-symbols.txt**: Complete symbol table
+- **dynamic-symbols.txt**: Dynamically linked symbols
+- **demangled-symbols.txt**: C++ symbols in readable form
+
+**What to look for**:
+- Function and variable names
+- External dependencies
+- C++ class and method names (demangled)
+- Static vs dynamic symbols
+
+### Radare2 Output
+
+Located in `analysis-results/radare2/`:
+- **File info**: Binary metadata
+- **Imports/Exports**: Function imports and exports
+- **Sections**: Binary sections with permissions
+- **Strings**: Embedded strings
+- **Functions**: Identified functions
+
+**What to look for**:
+- Control flow analysis
+- Cross-references
+- Potential vulnerabilities
+- Code structure
+
+### LDD Output
+
+Located in `analysis-results/ldd/`:
+- **Library dependencies**: Shared libraries required by binaries
+
+**What to look for**:
+- Missing dependencies
+- Version requirements
+- Library paths
+- Potential library injection vulnerabilities
 
 ### Binwalk Output
 
@@ -163,6 +252,28 @@ Located in `analysis-results/strings/`:
 - File paths
 - User messages and error strings
 
+### Hexdump Output
+
+Located in `analysis-results/hexdump/`:
+- **hexdump.txt**: Hexadecimal and ASCII representation (first 64KB)
+
+**What to look for**:
+- Binary patterns
+- Magic numbers and signatures
+- Embedded data structures
+- Suspicious byte sequences
+
+### File Analysis Output
+
+Located in `analysis-results/file-analysis/`:
+- **Detailed file type information**: Full file identification with MIME types
+
+**What to look for**:
+- Accurate file type identification
+- File format details
+- Compression and encoding information
+- Potential file masquerading
+
 ## Tips for Effective Analysis
 
 ### 1. Start with the Analysis Report
@@ -175,8 +286,12 @@ Always begin by reading `ANALYSIS_REPORT.md` to get an overview of:
 ### 2. Follow a Systematic Approach
 
 1. **File Discovery**: Check what files were found
-2. **High-Level Analysis**: Review apktool/jadx output for APKs/JARs
-3. **Binary Analysis**: Examine readelf output for native libraries
+2. **APK-Specific Analysis**: Start with APKiD to detect packers, then use apktool, jadx, and androguard
+3. **Binary Analysis**: Use objdump, nm, and readelf for ELF binaries
+4. **Dependency Check**: Review ldd output for library dependencies
+5. **Deep Inspection**: Use binwalk, radare2, and hexdump for detailed analysis
+6. **String Analysis**: Search strings output for sensitive information
+7. **Cross-Reference**: Correlate findings across different tools
 4. **Deep Inspection**: Use binwalk and strings for detailed analysis
 5. **Cross-Reference**: Correlate findings across different tools
 
