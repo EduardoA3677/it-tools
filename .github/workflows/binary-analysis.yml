@@ -33,14 +33,13 @@ jobs:
           sudo apt-get install -y wget unzip file binutils binwalk xxd
           
           # Install additional binary analysis tools
+          # Note: objdump and nm are provided by binutils (installed above)
+          # ldd is provided by libc-bin (system package)
+          # hexdump is provided by bsdextrautils (typically pre-installed)
           sudo apt-get install -y \
             strace ltrace \
             gdb \
             radare2 \
-            objdump \
-            nm \
-            ldd \
-            hexdump \
             7zip \
             p7zip-full \
             unrar \
