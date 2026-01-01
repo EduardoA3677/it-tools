@@ -10,7 +10,7 @@ runs:
   using: "composite"
   steps:
     - name: Not currently used
-      if: runner.os === 'Linux'
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         echo "Not currently used."
