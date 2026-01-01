@@ -1,0 +1,253 @@
+====================================================================
+RUNNER WORK DIRECTORY STRUCTURE AND ANALYSIS
+====================================================================
+Date: Thu Jan  1 23:27:00 UTC 2026
+Location: /home/runner/work
+Total Size: 1.7GB
+====================================================================
+
+## IMPORTANT NOTE
+This document provides a summary of the /home/runner/work directory.
+The full directory (1.7GB) cannot be uploaded to the repository due to:
+- Size constraints
+- Presence of binary files and build artifacts
+- Circular reference (contains the git repository itself)
+- Temporary and cache files
+- Potential sensitive information
+
+====================================================================
+
+## DIRECTORY STRUCTURE
+====================================================================
+
+/home/runner/work/
+├── _PipelineMapping/
+│   └── EduardoA3677/
+│       └── it-tools/
+│
+├── _actions/
+│   └── actions/
+│       └── upload-artifact/
+│           └── v4/
+│               ├── action.yml
+│               ├── README.md
+│               ├── CONTRIBUTING.md
+│               ├── CODE_OF_CONDUCT.md
+│               └── dist/ (compiled JavaScript)
+│
+├── _temp/
+│   ├── _github_workflow/
+│   │   └── event.json (workflow event data)
+│   │
+│   ├── _runner_file_commands/
+│   │   ├── add_path_*.sh
+│   │   ├── set_env_*.sh
+│   │   ├── set_output_*.sh
+│   │   ├── save_state_*.sh
+│   │   └── step_summary_*.sh
+│   │
+│   ├── cca-mcp-debug-logs/
+│   │   └── (MCP server debug logs)
+│   │
+│   ├── copilot-developer-action-main/
+│   │   ├── action.yml
+│   │   ├── package.json
+│   │   ├── package-lock.json
+│   │   ├── README.md
+│   │   ├── LICENSE.md
+│   │   ├── SECURITY.md
+│   │   ├── CONTRIBUTING.md
+│   │   ├── CODE_OF_CONDUCT.md
+│   │   ├── SUPPORT.md
+│   │   ├── version
+│   │   ├── node-req.env
+│   │   ├── action.tar.gz (441MB - main artifact)
+│   │   │
+│   │   ├── autofind/ (auto-discovery tools)
+│   │   ├── blackbird-mcp-server/ (MCP server)
+│   │   ├── github-mcp-server/ (GitHub MCP integration)
+│   │   ├── mcp/ (Model Context Protocol)
+│   │   ├── script/ (utility scripts)
+│   │   ├── ebpf/ (eBPF firewall components)
+│   │   │   └── launch.sh
+│   │   │
+│   │   └── dist/ (compiled action code - ~1GB)
+│   │       ├── index.js (main bundle)
+│   │       ├── trajectory.md (agent action log)
+│   │       └── node_modules/
+│   │
+│   ├── ghcca-node/ (symlink to Node.js)
+│   ├── mcp-server/
+│   │   └── mcp-config.json
+│   └── runtime-logs/
+│
+└── it-tools/
+    └── it-tools/ (THIS REPOSITORY)
+        ├── .git/
+        ├── README.md
+        ├── printenv.sh
+        ├── environment_variables.txt
+        ├── copilot_configuration_variables.txt
+        └── configurable_variables_investigation.txt
+
+====================================================================
+
+## KEY FILES AND CONTENT
+====================================================================
+
+### 1. Workflow Event Data
+File: /home/runner/work/_temp/_github_workflow/event.json
+Purpose: Contains the GitHub Actions workflow event that triggered this run
+Content: Pull request comment event data
+
+### 2. Copilot Developer Action
+Location: /home/runner/work/_temp/copilot-developer-action-main/
+Size: ~1.2GB (mostly in dist/ and action.tar.gz)
+Purpose: GitHub Copilot agent runtime and tools
+
+Key Components:
+- action.yml: Action definition
+- package.json: Node.js dependencies
+- dist/: Compiled TypeScript code (~1GB)
+- action.tar.gz: Compressed action artifact (441MB)
+- ebpf/: eBPF-based firewall for agent security
+- mcp/: Model Context Protocol implementation
+- github-mcp-server/: GitHub API integration
+- blackbird-mcp-server/: Additional MCP server
+
+### 3. Runner File Commands
+Location: /home/runner/work/_temp/_runner_file_commands/
+Purpose: GitHub Actions communication files
+Files:
+- add_path_*.sh: Adds directories to PATH
+- set_env_*.sh: Sets environment variables
+- set_output_*.sh: Sets step outputs
+- save_state_*.sh: Saves state between steps
+- step_summary_*.sh: Creates step summaries
+
+### 4. MCP Configuration
+File: /home/runner/work/_temp/mcp-server/mcp-config.json
+Purpose: Model Context Protocol server configuration
+
+### 5. Uploaded Actions
+Location: /home/runner/work/_actions/
+Purpose: Cached GitHub Actions used in workflow
+Contains: actions/upload-artifact@v4
+
+### 6. Repository (This Repository)
+Location: /home/runner/work/it-tools/it-tools/
+Purpose: The actual repository being worked on
+Size: ~40KB (our files)
+
+====================================================================
+
+## ANALYSIS OF IMPORTANT COMPONENTS
+====================================================================
+
+### eBPF Firewall (copilot-developer-action-main/ebpf/)
+Purpose: Security mechanism for Copilot agent
+- Monitors and controls network access
+- Implements allow-list based filtering
+- Logs firewall events
+
+Configurable Variables:
+- COPILOT_AGENT_FIREWALL_ENABLED
+- COPILOT_AGENT_FIREWALL_ALLOW_LIST
+- COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS
+- COPILOT_AGENT_FIREWALL_LOG_FILE
+- COPILOT_AGENT_FIREWALL_RULESET_ALLOW_LIST
+
+### MCP Server Configuration
+Location: /home/runner/work/_temp/mcp-server/mcp-config.json
+Purpose: Configures Model Context Protocol servers
+- Defines available tools and capabilities
+- Configures GitHub API integration
+- Sets up custom MCP servers
+
+### Trajectory Output
+File: /home/runner/work/_temp/copilot-developer-action-main/dist/trajectory.md
+Purpose: Logs all actions taken by the Copilot agent
+- Records tool calls
+- Captures decisions and reasoning
+- Useful for debugging and auditing
+
+### Runner File Commands
+Purpose: Communication mechanism between steps
+- Allows steps to set variables for subsequent steps
+- Provides outputs that can be used in later jobs
+- Enables dynamic PATH modifications
+
+====================================================================
+
+## SIZE BREAKDOWN
+====================================================================
+
+Total: 1.7GB
+
+Breakdown:
+- copilot-developer-action-main/dist/: ~1.0GB (compiled code)
+- copilot-developer-action-main/action.tar.gz: ~441MB
+- _actions/: ~50MB (cached actions)
+- _temp/ (other): ~200MB (logs, temp files)
+- it-tools/it-tools/: ~40KB (our repository)
+- Other: ~9MB
+
+====================================================================
+
+## FILES THAT CANNOT BE COMMITTED
+====================================================================
+
+1. Binary files:
+   - action.tar.gz (441MB)
+   - Compiled Node.js modules
+   - node_modules/ directories
+
+2. Temporary files:
+   - *.sh in _runner_file_commands/
+   - Log files
+   - Cache files
+
+3. Large compiled code:
+   - dist/ directories with compiled JS
+   - Bundled application code
+
+4. Circular reference:
+   - it-tools/it-tools/ contains the repository itself
+
+5. System files:
+   - Runner command files
+   - GitHub Actions internal files
+
+====================================================================
+
+## RECOMMENDATIONS
+====================================================================
+
+Instead of uploading the entire /home/runner/work directory:
+
+1. ✅ Environment variables captured in environment_variables.txt
+2. ✅ Copilot configuration documented in copilot_configuration_variables.txt
+3. ✅ Configurable variables analyzed in configurable_variables_investigation.txt
+4. ✅ This structure document provides overview
+5. Consider extracting specific files if needed:
+   - event.json (workflow event data)
+   - mcp-config.json (MCP configuration)
+   - trajectory.md (agent actions log)
+
+====================================================================
+
+## CONCLUSION
+====================================================================
+
+The /home/runner/work directory contains the GitHub Actions runner
+workspace with:
+- Temporary execution files
+- Cached actions
+- Copilot agent runtime (1.2GB)
+- This repository
+
+Due to size (1.7GB) and content type, the full directory should NOT
+be uploaded to git. This document and the other generated files
+provide comprehensive documentation of the relevant information.
+
+====================================================================
