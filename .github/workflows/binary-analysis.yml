@@ -147,9 +147,10 @@ jobs:
           find extracted/ -type f -iname "*.so" ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" | tee analysis-results/so-files.txt
           
           # Find ELF binaries dynamically using file command (excluding APK/JAR/SO already found)
+          # Using -exec file {} + for better performance (processes multiple files per invocation)
           echo "ELF binary files found:"
           find extracted/ -type f ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" \
-            ! -iname "*.apk" ! -iname "*.jar" ! -iname "*.so" -exec file {} \; | \
+            ! -iname "*.apk" ! -iname "*.jar" ! -iname "*.so" -exec file {} + | \
             grep -i "ELF" | cut -d: -f1 | tee analysis-results/elf-files.txt
           
           # Find other executable binaries (excluding already categorized files)
@@ -157,9 +158,10 @@ jobs:
           find extracted/ -type f -executable ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" \
             ! -iname "*.apk" ! -iname "*.jar" ! -iname "*.so" | tee analysis-results/exec-files.txt
           
-          # Additional file type detection for all files
+          # Additional file type detection for all files (using -exec file {} + for performance)
           echo "Analyzing file types..."
-          find extracted/ -type f ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" -exec file {} \; | tee analysis-results/file-types.txt
+          find extracted/ -type f ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" \
+            -exec file {} + | tee analysis-results/file-types.txt
           
           # Log summary
           echo "=== Discovery Summary ==="
@@ -168,6 +170,28 @@ jobs:
           echo "SO files: $(wc -l < analysis-results/so-files.txt 2>/dev/null || echo 0)"
           echo "ELF binaries: $(wc -l < analysis-results/elf-files.txt 2>/dev/null || echo 0)"
           echo "Other executables: $(wc -l < analysis-results/exec-files.txt 2>/dev/null || echo 0)"
+      
+      - name: Create analysis file lists
+        run: |
+          echo "=== Creating consolidated file lists for analysis ==="
+          
+          # Create list of native binaries (SO + ELF) for tools like readelf, objdump, nm, ldd
+          cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
+            sort -u > analysis-results/native-binaries.txt || touch analysis-results/native-binaries.txt
+          echo "Native binaries (SO + ELF): $(wc -l < analysis-results/native-binaries.txt 2>/dev/null || echo 0)"
+          
+          # Create list for binwalk analysis (APK + JAR + SO + ELF)
+          cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
+              analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
+              sort -u > analysis-results/binwalk-files.txt || touch analysis-results/binwalk-files.txt
+          echo "Files for binwalk: $(wc -l < analysis-results/binwalk-files.txt 2>/dev/null || echo 0)"
+          
+          # Create list of all binaries for generic tools (strings, file, hexdump, radare2)
+          cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
+              analysis-results/so-files.txt analysis-results/elf-files.txt \
+              analysis-results/exec-files.txt 2>/dev/null | \
+              sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
+          echo "All binaries: $(wc -l < analysis-results/all-binaries.txt 2>/dev/null || echo 0)"
       
       - name: Analyze APK files with apktool
         continue-on-error: true
@@ -253,11 +277,10 @@ jobs:
           echo "=== Analyzing SO and ELF files with readelf ==="
           mkdir -p analysis-results/readelf
           
-          # Combine SO and ELF files for readelf analysis
-          cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
-            sort -u > analysis-results/elf-so-files.txt || touch analysis-results/elf-so-files.txt
+          file_count=$(wc -l < analysis-results/native-binaries.txt 2>/dev/null || echo 0)
+          echo "Analyzing $file_count native binaries with readelf"
           
-          if [ -s analysis-results/elf-so-files.txt ]; then
+          if [ -s analysis-results/native-binaries.txt ]; then
             while IFS= read -r elf_file; do
               if [ -f "$elf_file" ]; then
                 echo "Analyzing: $elf_file"
@@ -286,7 +309,7 @@ jobs:
                 
                 echo "Analyzed: $elf_file" >> analysis-results/readelf/summary.txt
               fi
-            done < analysis-results/elf-so-files.txt
+            done < analysis-results/native-binaries.txt
           else
             echo "No SO or ELF files found to analyze" > analysis-results/readelf/summary.txt
           fi
@@ -297,16 +320,8 @@ jobs:
           echo "=== Analyzing with binwalk ==="
           mkdir -p analysis-results/binwalk
           
-          # Combine relevant files for binwalk analysis (APK, JAR, SO, ELF)
-          # Binwalk is good for finding embedded files in any binary format
-          cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
-              analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
-              grep -vE '(/apktool/framework/|/\.local/share/apktool/framework/)' | \
-              sort -u > analysis-results/binwalk-files.txt || touch analysis-results/binwalk-files.txt
-          
-          # Log the number of unique files to analyze
           file_count=$(wc -l < analysis-results/binwalk-files.txt 2>/dev/null || echo 0)
-          echo "Total files for binwalk analysis: $file_count"
+          echo "Analyzing $file_count files with binwalk"
           
           if [ -s analysis-results/binwalk-files.txt ]; then
             while IFS= read -r binary_file; do
@@ -336,14 +351,8 @@ jobs:
           echo "=== Extracting strings from binaries ==="
           mkdir -p analysis-results/strings
           
-          # Combine all binary files for strings analysis
-          cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
-              analysis-results/so-files.txt analysis-results/elf-files.txt \
-              analysis-results/exec-files.txt 2>/dev/null | \
-              sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
-          
           file_count=$(wc -l < analysis-results/all-binaries.txt 2>/dev/null || echo 0)
-          echo "Total files for strings analysis: $file_count"
+          echo "Extracting strings from $file_count binaries"
           
           if [ -s analysis-results/all-binaries.txt ]; then
             while IFS= read -r binary_file; do
@@ -370,12 +379,8 @@ jobs:
           echo "=== Analyzing with objdump ==="
           mkdir -p analysis-results/objdump
           
-          # Combine SO and ELF files for objdump analysis (native binaries)
-          cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
-            sort -u > analysis-results/native-binaries.txt || touch analysis-results/native-binaries.txt
-          
           file_count=$(wc -l < analysis-results/native-binaries.txt 2>/dev/null || echo 0)
-          echo "Total native binaries for objdump: $file_count"
+          echo "Analyzing $file_count native binaries with objdump"
           
           if [ -s analysis-results/native-binaries.txt ]; then
             while IFS= read -r binary_file; do
@@ -417,14 +422,8 @@ jobs:
           echo "=== Analyzing symbols with nm ==="
           mkdir -p analysis-results/nm
           
-          # Use native binaries list (already created in objdump step)
-          if [ ! -f analysis-results/native-binaries.txt ]; then
-            cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
-              sort -u > analysis-results/native-binaries.txt || touch analysis-results/native-binaries.txt
-          fi
-          
           file_count=$(wc -l < analysis-results/native-binaries.txt 2>/dev/null || echo 0)
-          echo "Total native binaries for nm: $file_count"
+          echo "Extracting symbols from $file_count native binaries"
           
           if [ -s analysis-results/native-binaries.txt ]; then
             while IFS= read -r binary_file; do
@@ -453,14 +452,6 @@ jobs:
         run: |
           echo "=== Analyzing with radare2 ==="
           mkdir -p analysis-results/radare2
-          
-          # Use all binaries for radare2 (it supports multiple formats)
-          if [ ! -f analysis-results/all-binaries.txt ]; then
-            cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
-                analysis-results/so-files.txt analysis-results/elf-files.txt \
-                analysis-results/exec-files.txt 2>/dev/null | \
-                sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
-          fi
           
           if [ -s analysis-results/all-binaries.txt ]; then
             # Limit to first 10 files to avoid timeout
@@ -591,14 +582,10 @@ jobs:
           echo "=== Checking library dependencies with ldd ==="
           mkdir -p analysis-results/ldd
           
-          # Combine SO and ELF files for ldd analysis
-          cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
-            sort -u > analysis-results/ldd-files.txt || touch analysis-results/ldd-files.txt
+          file_count=$(wc -l < analysis-results/native-binaries.txt 2>/dev/null || echo 0)
+          echo "Checking dependencies for $file_count native binaries"
           
-          file_count=$(wc -l < analysis-results/ldd-files.txt 2>/dev/null || echo 0)
-          echo "Total SO/ELF files for ldd: $file_count"
-          
-          if [ -s analysis-results/ldd-files.txt ]; then
+          if [ -s analysis-results/native-binaries.txt ]; then
             while IFS= read -r so_file; do
               if [ -f "$so_file" ]; then
                 echo "Checking dependencies: $so_file"
@@ -609,9 +596,9 @@ jobs:
                 
                 echo "Analyzed: $so_file" >> analysis-results/ldd/summary.txt
               fi
-            done < analysis-results/ldd-files.txt
+            done < analysis-results/native-binaries.txt
           else
-            echo "No SO/ELF files found for ldd analysis" > analysis-results/ldd/summary.txt
+            echo "No native binaries found for ldd analysis" > analysis-results/ldd/summary.txt
           fi
       
       - name: Hexdump analysis for suspicious patterns
@@ -619,14 +606,6 @@ jobs:
         run: |
           echo "=== Creating hexdumps ==="
           mkdir -p analysis-results/hexdump
-          
-          # Use all binaries for hexdump
-          if [ ! -f analysis-results/all-binaries.txt ]; then
-            cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
-                analysis-results/so-files.txt analysis-results/elf-files.txt \
-                analysis-results/exec-files.txt 2>/dev/null | \
-                sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
-          fi
           
           if [ -s analysis-results/all-binaries.txt ]; then
             # Limit to first 20 files and first 1000 lines each
@@ -656,14 +635,6 @@ jobs:
         run: |
           echo "=== Detailed file type identification ==="
           mkdir -p analysis-results/file-analysis
-          
-          # Use all binaries for file analysis
-          if [ ! -f analysis-results/all-binaries.txt ]; then
-            cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
-                analysis-results/so-files.txt analysis-results/elf-files.txt \
-                analysis-results/exec-files.txt 2>/dev/null | \
-                sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
-          fi
           
           file_count=$(wc -l < analysis-results/all-binaries.txt 2>/dev/null || echo 0)
           echo "Performing detailed file analysis on $file_count files"
