@@ -282,7 +282,7 @@ jobs:
           # Also exclude any apktool framework files that might have been missed
           cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
               analysis-results/so-files.txt analysis-results/binary-files.txt 2>/dev/null | \
-              grep -v "/apktool/framework/" | grep -v "/.local/share/apktool/framework/" | \
+              grep -vE '(/apktool/framework/|/\.local/share/apktool/framework/)' | \
               sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
           
           # Log the number of unique files to analyze
