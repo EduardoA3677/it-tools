@@ -134,25 +134,25 @@ jobs:
           # Create a list of files to analyze
           echo "=== Discovering files for analysis ==="
           
-          # Find all APK files
+          # Find all APK files (excluding apktool framework directory)
           echo "APK files found:"
-          find extracted/ -type f -iname "*.apk" | tee analysis-results/apk-files.txt
+          find extracted/ -type f -iname "*.apk" ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" | tee analysis-results/apk-files.txt
           
-          # Find all JAR files
+          # Find all JAR files (excluding apktool framework directory)
           echo "JAR files found:"
-          find extracted/ -type f -iname "*.jar" | tee analysis-results/jar-files.txt
+          find extracted/ -type f -iname "*.jar" ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" | tee analysis-results/jar-files.txt
           
-          # Find all SO files
+          # Find all SO files (excluding apktool framework directory)
           echo "SO files found:"
-          find extracted/ -type f -iname "*.so" | tee analysis-results/so-files.txt
+          find extracted/ -type f -iname "*.so" ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" | tee analysis-results/so-files.txt
           
-          # Find binary files (executable)
+          # Find binary files (executable, excluding apktool framework directory)
           echo "Binary/Executable files found:"
-          find extracted/ -type f -executable | tee analysis-results/binary-files.txt
+          find extracted/ -type f -executable ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" | tee analysis-results/binary-files.txt
           
           # Additional binary detection using 'file' command
           echo "Analyzing file types..."
-          find extracted/ -type f -exec file {} \; | tee analysis-results/file-types.txt
+          find extracted/ -type f ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" -exec file {} \; | tee analysis-results/file-types.txt
       
       - name: Analyze APK files with apktool
         continue-on-error: true
@@ -278,10 +278,16 @@ jobs:
           echo "=== Analyzing with binwalk ==="
           mkdir -p analysis-results/binwalk
           
-          # Combine all files for binwalk analysis
+          # Combine all files for binwalk analysis and remove duplicates
+          # Also exclude any apktool framework files that might have been missed
           cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
               analysis-results/so-files.txt analysis-results/binary-files.txt 2>/dev/null | \
+              grep -v "/apktool/framework/" | grep -v "/.local/share/apktool/framework/" | \
               sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
+          
+          # Log the number of unique files to analyze
+          file_count=$(wc -l < analysis-results/all-binaries.txt 2>/dev/null || echo 0)
+          echo "Total unique binary files to analyze: $file_count"
           
           if [ -s analysis-results/all-binaries.txt ]; then
             while IFS= read -r binary_file; do
