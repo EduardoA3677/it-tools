@@ -146,13 +146,28 @@ jobs:
           echo "SO files found:"
           find extracted/ -type f -iname "*.so" ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" | tee analysis-results/so-files.txt
           
-          # Find binary files (executable, excluding apktool framework directory)
-          echo "Binary/Executable files found:"
-          find extracted/ -type f -executable ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" | tee analysis-results/binary-files.txt
+          # Find ELF binaries dynamically using file command (excluding APK/JAR/SO already found)
+          echo "ELF binary files found:"
+          find extracted/ -type f ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" \
+            ! -iname "*.apk" ! -iname "*.jar" ! -iname "*.so" -exec file {} \; | \
+            grep -i "ELF" | cut -d: -f1 | tee analysis-results/elf-files.txt
           
-          # Additional binary detection using 'file' command
+          # Find other executable binaries (excluding already categorized files)
+          echo "Other executable files found:"
+          find extracted/ -type f -executable ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" \
+            ! -iname "*.apk" ! -iname "*.jar" ! -iname "*.so" | tee analysis-results/exec-files.txt
+          
+          # Additional file type detection for all files
           echo "Analyzing file types..."
           find extracted/ -type f ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" -exec file {} \; | tee analysis-results/file-types.txt
+          
+          # Log summary
+          echo "=== Discovery Summary ==="
+          echo "APK files: $(wc -l < analysis-results/apk-files.txt 2>/dev/null || echo 0)"
+          echo "JAR files: $(wc -l < analysis-results/jar-files.txt 2>/dev/null || echo 0)"
+          echo "SO files: $(wc -l < analysis-results/so-files.txt 2>/dev/null || echo 0)"
+          echo "ELF binaries: $(wc -l < analysis-results/elf-files.txt 2>/dev/null || echo 0)"
+          echo "Other executables: $(wc -l < analysis-results/exec-files.txt 2>/dev/null || echo 0)"
       
       - name: Analyze APK files with apktool
         continue-on-error: true
@@ -232,44 +247,48 @@ jobs:
             echo "No APK or JAR files found to decompile" > analysis-results/jadx/summary.txt
           fi
       
-      - name: Analyze SO files with readelf
+      - name: Analyze SO and ELF files with readelf
         continue-on-error: true
         run: |
-          echo "=== Analyzing SO files with readelf ==="
+          echo "=== Analyzing SO and ELF files with readelf ==="
           mkdir -p analysis-results/readelf
           
-          if [ -s analysis-results/so-files.txt ]; then
-            while IFS= read -r so_file; do
-              if [ -f "$so_file" ]; then
-                echo "Analyzing: $so_file"
-                base_name=$(basename "$so_file")
+          # Combine SO and ELF files for readelf analysis
+          cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
+            sort -u > analysis-results/elf-so-files.txt || touch analysis-results/elf-so-files.txt
+          
+          if [ -s analysis-results/elf-so-files.txt ]; then
+            while IFS= read -r elf_file; do
+              if [ -f "$elf_file" ]; then
+                echo "Analyzing: $elf_file"
+                base_name=$(basename "$elf_file")
                 
                 # Run various readelf analyses
                 {
-                  echo "=== File: $so_file ==="
+                  echo "=== File: $elf_file ==="
                   echo ""
                   echo "--- ELF Header ---"
-                  readelf -h "$so_file" 2>&1
+                  readelf -h "$elf_file" 2>&1
                   echo ""
                   echo "--- Program Headers ---"
-                  readelf -l "$so_file" 2>&1
+                  readelf -l "$elf_file" 2>&1
                   echo ""
                   echo "--- Section Headers ---"
-                  readelf -S "$so_file" 2>&1
+                  readelf -S "$elf_file" 2>&1
                   echo ""
                   echo "--- Symbol Table ---"
-                  readelf -s "$so_file" 2>&1 | head -100
+                  readelf -s "$elf_file" 2>&1 | head -100
                   echo ""
                   echo "--- Dynamic Section ---"
-                  readelf -d "$so_file" 2>&1
+                  readelf -d "$elf_file" 2>&1
                   echo ""
                 } > "analysis-results/readelf/${base_name}-readelf.txt"
                 
-                echo "Analyzed: $so_file" >> analysis-results/readelf/summary.txt
+                echo "Analyzed: $elf_file" >> analysis-results/readelf/summary.txt
               fi
-            done < analysis-results/so-files.txt
+            done < analysis-results/elf-so-files.txt
           else
-            echo "No SO files found to analyze" > analysis-results/readelf/summary.txt
+            echo "No SO or ELF files found to analyze" > analysis-results/readelf/summary.txt
           fi
       
       - name: Analyze binary files with binwalk
@@ -278,18 +297,18 @@ jobs:
           echo "=== Analyzing with binwalk ==="
           mkdir -p analysis-results/binwalk
           
-          # Combine all files for binwalk analysis and remove duplicates
-          # Also exclude any apktool framework files that might have been missed
+          # Combine relevant files for binwalk analysis (APK, JAR, SO, ELF)
+          # Binwalk is good for finding embedded files in any binary format
           cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
-              analysis-results/so-files.txt analysis-results/binary-files.txt 2>/dev/null | \
+              analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
               grep -vE '(/apktool/framework/|/\.local/share/apktool/framework/)' | \
-              sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
+              sort -u > analysis-results/binwalk-files.txt || touch analysis-results/binwalk-files.txt
           
           # Log the number of unique files to analyze
-          file_count=$(wc -l < analysis-results/all-binaries.txt 2>/dev/null || echo 0)
-          echo "Total unique binary files to analyze: $file_count"
+          file_count=$(wc -l < analysis-results/binwalk-files.txt 2>/dev/null || echo 0)
+          echo "Total files for binwalk analysis: $file_count"
           
-          if [ -s analysis-results/all-binaries.txt ]; then
+          if [ -s analysis-results/binwalk-files.txt ]; then
             while IFS= read -r binary_file; do
               if [ -f "$binary_file" ]; then
                 echo "Analyzing: $binary_file"
@@ -306,7 +325,7 @@ jobs:
                 
                 echo "Analyzed: $binary_file" >> analysis-results/binwalk/summary.txt
               fi
-            done < analysis-results/all-binaries.txt
+            done < analysis-results/binwalk-files.txt
           else
             echo "No binary files found to analyze" > analysis-results/binwalk/summary.txt
           fi
@@ -316,6 +335,15 @@ jobs:
         run: |
           echo "=== Extracting strings from binaries ==="
           mkdir -p analysis-results/strings
+          
+          # Combine all binary files for strings analysis
+          cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
+              analysis-results/so-files.txt analysis-results/elf-files.txt \
+              analysis-results/exec-files.txt 2>/dev/null | \
+              sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
+          
+          file_count=$(wc -l < analysis-results/all-binaries.txt 2>/dev/null || echo 0)
+          echo "Total files for strings analysis: $file_count"
           
           if [ -s analysis-results/all-binaries.txt ]; then
             while IFS= read -r binary_file; do
@@ -342,7 +370,14 @@ jobs:
           echo "=== Analyzing with objdump ==="
           mkdir -p analysis-results/objdump
           
-          if [ -s analysis-results/all-binaries.txt ]; then
+          # Combine SO and ELF files for objdump analysis (native binaries)
+          cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
+            sort -u > analysis-results/native-binaries.txt || touch analysis-results/native-binaries.txt
+          
+          file_count=$(wc -l < analysis-results/native-binaries.txt 2>/dev/null || echo 0)
+          echo "Total native binaries for objdump: $file_count"
+          
+          if [ -s analysis-results/native-binaries.txt ]; then
             while IFS= read -r binary_file; do
               if [ -f "$binary_file" ]; then
                 echo "Analyzing: $binary_file"
@@ -371,9 +406,9 @@ jobs:
                 
                 echo "Analyzed: $binary_file" >> analysis-results/objdump/summary.txt
               fi
-            done < analysis-results/all-binaries.txt
+            done < analysis-results/native-binaries.txt
           else
-            echo "No binary files found for objdump analysis" > analysis-results/objdump/summary.txt
+            echo "No native binary files found for objdump analysis" > analysis-results/objdump/summary.txt
           fi
       
       - name: Analyze with nm (symbol extraction)
@@ -382,7 +417,16 @@ jobs:
           echo "=== Analyzing symbols with nm ==="
           mkdir -p analysis-results/nm
           
-          if [ -s analysis-results/all-binaries.txt ]; then
+          # Use native binaries list (already created in objdump step)
+          if [ ! -f analysis-results/native-binaries.txt ]; then
+            cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
+              sort -u > analysis-results/native-binaries.txt || touch analysis-results/native-binaries.txt
+          fi
+          
+          file_count=$(wc -l < analysis-results/native-binaries.txt 2>/dev/null || echo 0)
+          echo "Total native binaries for nm: $file_count"
+          
+          if [ -s analysis-results/native-binaries.txt ]; then
             while IFS= read -r binary_file; do
               if [ -f "$binary_file" ]; then
                 echo "Extracting symbols from: $binary_file"
@@ -399,9 +443,9 @@ jobs:
                 
                 echo "Analyzed: $binary_file" >> analysis-results/nm/summary.txt
               fi
-            done < analysis-results/all-binaries.txt
+            done < analysis-results/native-binaries.txt
           else
-            echo "No binary files found for nm analysis" > analysis-results/nm/summary.txt
+            echo "No native binary files found for nm analysis" > analysis-results/nm/summary.txt
           fi
       
       - name: Analyze with radare2
@@ -410,9 +454,20 @@ jobs:
           echo "=== Analyzing with radare2 ==="
           mkdir -p analysis-results/radare2
           
+          # Use all binaries for radare2 (it supports multiple formats)
+          if [ ! -f analysis-results/all-binaries.txt ]; then
+            cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
+                analysis-results/so-files.txt analysis-results/elf-files.txt \
+                analysis-results/exec-files.txt 2>/dev/null | \
+                sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
+          fi
+          
           if [ -s analysis-results/all-binaries.txt ]; then
             # Limit to first 10 files to avoid timeout
             head -10 analysis-results/all-binaries.txt > analysis-results/radare2-files.txt
+            
+            file_count=$(wc -l < analysis-results/radare2-files.txt 2>/dev/null || echo 0)
+            echo "Analyzing $file_count files with radare2 (limited to prevent timeout)"
             
             while IFS= read -r binary_file; do
               if [ -f "$binary_file" ]; then
@@ -536,7 +591,14 @@ jobs:
           echo "=== Checking library dependencies with ldd ==="
           mkdir -p analysis-results/ldd
           
-          if [ -s analysis-results/so-files.txt ]; then
+          # Combine SO and ELF files for ldd analysis
+          cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
+            sort -u > analysis-results/ldd-files.txt || touch analysis-results/ldd-files.txt
+          
+          file_count=$(wc -l < analysis-results/ldd-files.txt 2>/dev/null || echo 0)
+          echo "Total SO/ELF files for ldd: $file_count"
+          
+          if [ -s analysis-results/ldd-files.txt ]; then
             while IFS= read -r so_file; do
               if [ -f "$so_file" ]; then
                 echo "Checking dependencies: $so_file"
@@ -547,9 +609,9 @@ jobs:
                 
                 echo "Analyzed: $so_file" >> analysis-results/ldd/summary.txt
               fi
-            done < analysis-results/so-files.txt
+            done < analysis-results/ldd-files.txt
           else
-            echo "No SO files found for ldd analysis" > analysis-results/ldd/summary.txt
+            echo "No SO/ELF files found for ldd analysis" > analysis-results/ldd/summary.txt
           fi
       
       - name: Hexdump analysis for suspicious patterns
@@ -558,9 +620,20 @@ jobs:
           echo "=== Creating hexdumps ==="
           mkdir -p analysis-results/hexdump
           
+          # Use all binaries for hexdump
+          if [ ! -f analysis-results/all-binaries.txt ]; then
+            cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
+                analysis-results/so-files.txt analysis-results/elf-files.txt \
+                analysis-results/exec-files.txt 2>/dev/null | \
+                sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
+          fi
+          
           if [ -s analysis-results/all-binaries.txt ]; then
             # Limit to first 20 files and first 1000 lines each
             head -20 analysis-results/all-binaries.txt > analysis-results/hexdump-files.txt
+            
+            file_count=$(wc -l < analysis-results/hexdump-files.txt 2>/dev/null || echo 0)
+            echo "Creating hexdumps for $file_count files (limited to prevent large artifacts)"
             
             while IFS= read -r binary_file; do
               if [ -f "$binary_file" ]; then
@@ -584,6 +657,17 @@ jobs:
           echo "=== Detailed file type identification ==="
           mkdir -p analysis-results/file-analysis
           
+          # Use all binaries for file analysis
+          if [ ! -f analysis-results/all-binaries.txt ]; then
+            cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
+                analysis-results/so-files.txt analysis-results/elf-files.txt \
+                analysis-results/exec-files.txt 2>/dev/null | \
+                sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
+          fi
+          
+          file_count=$(wc -l < analysis-results/all-binaries.txt 2>/dev/null || echo 0)
+          echo "Performing detailed file analysis on $file_count files"
+          
           if [ -s analysis-results/all-binaries.txt ]; then
             while IFS= read -r binary_file; do
               if [ -f "$binary_file" ]; then
@@ -606,7 +690,7 @@ jobs:
               fi
             done < analysis-results/all-binaries.txt
             
-            echo "File type analysis completed" > analysis-results/file-analysis/summary.txt
+            echo "File type analysis completed for $file_count files" > analysis-results/file-analysis/summary.txt
           else
             echo "No binary files found" > analysis-results/file-analysis/summary.txt
           fi
