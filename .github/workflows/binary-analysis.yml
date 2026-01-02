@@ -147,6 +147,8 @@ jobs:
           find extracted/ -type f -iname "*.so" ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" | tee analysis-results/so-files.txt
           
           # Find ELF binaries dynamically using file command (excluding APK/JAR/SO already found)
+          # Note: This excludes files by extension first for efficiency, but may miss ELF files
+          # with non-standard extensions (e.g., no extension or unusual naming)
           # Using -exec file {} + for better performance (processes multiple files per invocation)
           echo "ELF binary files found:"
           find extracted/ -type f ! -path "*/apktool/framework/*" ! -path "*/.local/share/apktool/framework/*" \
@@ -176,21 +178,34 @@ jobs:
           echo "=== Creating consolidated file lists for analysis ==="
           
           # Create list of native binaries (SO + ELF) for tools like readelf, objdump, nm, ldd
-          cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
-            sort -u > analysis-results/native-binaries.txt || touch analysis-results/native-binaries.txt
+          # These files should exist from the discovery step
+          if [ -f analysis-results/so-files.txt ] && [ -f analysis-results/elf-files.txt ]; then
+            cat analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
+              sort -u > analysis-results/native-binaries.txt
+          else
+            touch analysis-results/native-binaries.txt
+          fi
           echo "Native binaries (SO + ELF): $(wc -l < analysis-results/native-binaries.txt 2>/dev/null || echo 0)"
           
           # Create list for binwalk analysis (APK + JAR + SO + ELF)
-          cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
-              analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
-              sort -u > analysis-results/binwalk-files.txt || touch analysis-results/binwalk-files.txt
+          if [ -f analysis-results/apk-files.txt ] && [ -f analysis-results/jar-files.txt ]; then
+            cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
+                analysis-results/so-files.txt analysis-results/elf-files.txt 2>/dev/null | \
+                sort -u > analysis-results/binwalk-files.txt
+          else
+            touch analysis-results/binwalk-files.txt
+          fi
           echo "Files for binwalk: $(wc -l < analysis-results/binwalk-files.txt 2>/dev/null || echo 0)"
           
           # Create list of all binaries for generic tools (strings, file, hexdump, radare2)
-          cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
-              analysis-results/so-files.txt analysis-results/elf-files.txt \
-              analysis-results/exec-files.txt 2>/dev/null | \
-              sort -u > analysis-results/all-binaries.txt || touch analysis-results/all-binaries.txt
+          if [ -f analysis-results/apk-files.txt ]; then
+            cat analysis-results/apk-files.txt analysis-results/jar-files.txt \
+                analysis-results/so-files.txt analysis-results/elf-files.txt \
+                analysis-results/exec-files.txt 2>/dev/null | \
+                sort -u > analysis-results/all-binaries.txt
+          else
+            touch analysis-results/all-binaries.txt
+          fi
           echo "All binaries: $(wc -l < analysis-results/all-binaries.txt 2>/dev/null || echo 0)"
       
       - name: Analyze APK files with apktool
